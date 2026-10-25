@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+config=${XDG_CONFIG_HOME:-$HOME/.config}
+state=${XDG_STATE_HOME:-$HOME/.local/state}/server-setup
+files=(.zshenv .tmux.conf .config/nvim/init.lua .config/zsh/.zshrc .config/zsh/aliasrc .config/zsh/prompt.zsh .config/lf/lfrc)
+action=${1:-help}
+
+case "$action" in
+    check|install|uninstall) ;;
+    help|-h|--help)
+        cat <<'HELP'
+Usage: ./setup check|install|uninstall
+
+check      Show available programs and configuration status.
+install    Copy dotfiles for the current user, backing up existing files.
+uninstall  Restore original files, keeping manually modified files intact.
+
+No packages are installed and the login shell is not changed.
+Backups are stored in ${XDG_STATE_HOME:-~/.local/state}/server-setup.
+HELP
+        exit 0
+        ;;
+    *) printf 'Unknown command: %s\n' "$action" >&2; exit 1 ;;
+esac
+
+if [[ "$action" == check ]]; then
+    for program in bash zsh tmux nvim lf; do
+        if command -v "$program" >/dev/null 2>&1; then
+            printf 'Available: %s\n' "$program"
+        else
+            printf 'Missing: %s\n' "$program"
+        fi
+    done
+fi
+
+result=0
+
+for file in "${files[@]}"; do
+    source_file=$root/dotfiles/$file
+    target=$HOME/$file
+
+    if [[ "$file" == .config/* ]]; then
+        target=$config/${file#.config/}
+    fi
+
+    saved=$state/$file
+
+    if [[ "$action" == check ]]; then
+        if [[ -f "$target" ]] && cmp -s -- "$source_file" "$target"; then
+            printf 'Current: %s\n' "$target"
+        elif [[ -e "$target" || -L "$target" ]]; then
+            printf 'Different: %s\n' "$target"
+        else
+            printf 'Missing: %s\n' "$target"
+        fi
+
+        continue
+    fi
+
+    if [[ -f "$saved/installed" ]]; then
+        if [[ ! -f "$saved/target" || $(<"$saved/target") != "$target" ]]; then
+            printf 'Skipped changed configuration location: %s\n' "$target" >&2
+            result=1
+            continue
+        fi
+
+        if [[ -L "$target" || ! -f "$target" ]] || ! cmp -s -- "$saved/installed" "$target"; then
+            printf 'Skipped modified or missing file: %s\n' "$target" >&2
+            result=1
+            continue
+        fi
+    elif [[ "$action" == uninstall ]]; then
+        continue
+    fi
+
+    if [[ "$action" == install ]]; then
+        if [[ -f "$saved/installed" ]] && cmp -s -- "$source_file" "$target"; then
+            printf 'Current: %s\n' "$target"
+            continue
+        fi
+
+        if [[ -d "$target" ]]; then
+            printf 'Skipped directory: %s\n' "$target" >&2
+            result=1
+            continue
+        fi
+
+        mkdir -p -- "$saved" "$(dirname -- "$target")"
+        chmod 700 -- "$state" "$saved"
+
+        if [[ ! -f "$saved/installed" ]]; then
+            if [[ -e "$saved/original" || -L "$saved/original" ]]; then
+                printf 'Skipped incomplete installation: %s\n' "$target" >&2
+                result=1
+                continue
+            fi
+
+            if [[ -e "$target" || -L "$target" ]]; then
+                cp -a -- "$target" "$saved/original"
+            fi
+        fi
+
+        printf '%s\n' "$target" > "$saved/target"
+        cp --remove-destination -- "$source_file" "$target"
+        cp -- "$source_file" "$saved/installed"
+        printf 'Installed: %s\n' "$target"
+    else
+        rm -- "$target"
+
+        if [[ -e "$saved/original" || -L "$saved/original" ]]; then
+            mv -- "$saved/original" "$target"
+        fi
+
+        rm -- "$saved/installed"
+        rm -- "$saved/target"
+        printf 'Restored: %s\n' "$target"
+    fi
+done
+
+exit "$result"

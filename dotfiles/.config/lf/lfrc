@@ -1,0 +1,74 @@
+set shell bash
+set shellopts '-euf'
+set ifs "\n"
+set scrolloff 15
+set hidden
+set relativenumber
+set mouse
+
+cmd open $nvim -- $fx
+
+cmd delete ${{
+    printf '%s\n' "$fx"
+    printf 'Permanently delete selected files? [y/N]: '
+    read -r answer
+    [ "$answer" = y ] || exit 0
+    rm -rf -- $fx
+}}
+
+cmd mkdir ${{
+    printf 'Directory name: '
+    read -r name
+    [ -n "$name" ] || exit 0
+    mkdir -- "$name"
+}}
+
+cmd mkfile ${{
+    printf 'File name: '
+    read -r name
+    [ -n "$name" ] || exit 0
+    touch -- "$name"
+}}
+
+cmd mkscript $chmod +x -- $fx
+
+map d
+map g
+map m
+map o
+map e
+map f
+map s
+map i
+map r
+map M
+map <esc> quit
+map <enter> open
+map p paste
+map x cut
+map dd delete
+map y copy
+map u :unselect; clear
+map <c-r> reload
+map r reload
+map o $nvim
+map ms mkscript
+map md mkdir
+map mf mkfile
+map A rename
+map I push A<c-a>
+map i push A<a-b><a-b><a-f>
+map a push A<a-b>
+map c push A<c-u>
+map V visual
+map . set hidden!
+map gg top
+map gh cd
+map gc cd ~/.config
+map gl cd ~/.local
+map gr cd /
+map gu cd /usr
+map ge cd /etc
+map gv cd /var/log
+map gs cd /srv
+map <c-w> cmd-delete-word
