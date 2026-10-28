@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -gt 0 ]]; then
+    printf 'Usage: ./install-lf\nInstall the latest lf release into ~/.local/bin.\n'
+    [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]] && exit 0
+    exit 1
+fi
+
+if [[ $(uname -s) != Linux ]]; then
+    printf 'This installer requires Linux.\n' >&2
+    exit 1
+fi
+
+case "$(uname -m)" in
+    x86_64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) printf 'Unsupported architecture: %s\n' "$(uname -m)" >&2; exit 1 ;;
+esac
+
+for program in curl tar install mktemp; do
+    if ! command -v "$program" >/dev/null 2>&1; then
+        printf 'Missing dependency: %s\nOn Ubuntu, run: sudo apt update && sudo apt install curl ca-certificates tar coreutils\n' "$program" >&2
+        exit 1
+    fi
+done
+
+temporary=$(mktemp -d)
+trap 'rm -rf -- "$temporary"' EXIT
+
+curl --fail --location --silent --show-error --retry 3 \
+    "https://github.com/gokcehan/lf/releases/latest/download/lf-linux-${arch}.tar.gz" \
+    --output "$temporary/lf.tar.gz"
+tar -xzf "$temporary/lf.tar.gz" -C "$temporary" -- lf
+install -d -- "$HOME/.local/bin"
+install -m 755 -- "$temporary/lf" "$HOME/.local/bin/lf"
+printf 'Installed: %s\n' "$HOME/.local/bin/lf"
+
+case ":$PATH:" in
+    *":$HOME/.local/bin:"*) ;;
+    *) printf 'Add ~/.local/bin to PATH in your shell configuration:\nexport PATH="$HOME/.local/bin:$PATH"\n' ;;
+esac
